@@ -1,14 +1,10 @@
 package main;
-import java.util.*;
 
 import model.AckManager;
 import model.CheckSumManager;
 import model.SequenceManager;
 
-import java.io.*;
-
-public class StudentNetworkSimulator extends NetworkSimulator
-{
+public class StudentNetworkSimulator extends NetworkSimulator {
     /*
      * Predefined Constants (static member variables):
      *
@@ -98,17 +94,17 @@ public class StudentNetworkSimulator extends NetworkSimulator
     private int WindowSize;
     private double RxmtInterval;
     private int LimitSeqNo;
-    
+
     // Add any necessary class variables here.  Remember, you cannot use
     // these variables to send messages error free!  They can only hold
     // state information for A or B.
     // Also add any necessary methods (e.g. checksum of a String)
-    
+
     private CheckSumManager aCheckSumManager;
     private AckManager ackManager;
     private SequenceManager aSeqManager;
-    
-    
+
+
     private CheckSumManager bCheckSumManager;
     private AckManager bAckManager;
     private SequenceManager bSeqManager;
@@ -121,100 +117,92 @@ public class StudentNetworkSimulator extends NetworkSimulator
                                    int trace,
                                    int seed,
                                    int winsize,
-                                   double delay)
-    {
+                                   double delay) {
         super(numMessages, loss, corrupt, avgDelay, trace, seed);
-	WindowSize = winsize;
-	LimitSeqNo = 2*winsize;
-	RxmtInterval = delay;
+        WindowSize = winsize;
+        LimitSeqNo = 2 * winsize;
+        RxmtInterval = delay;
     }
 
-    
+
     // This routine will be called whenever the upper layer at the sender [A]
     // has a message to send.  It is the job of your protocol to insure that
     // the data in such a message is delivered in-order, and correctly, to
     // the receiving upper layer.
-    protected void aOutput(Message message)
-    {
-    	int ackNumber = ackManager.get();
-    	int seqNumber = aSeqManager.get();
-    	int checkSum = aCheckSumManager.getCheckSum(seqNumber, ackNumber, message.getData());
-    	
-    	Packet packet = new Packet(seqNumber, ackNumber, checkSum, message.getData());
+    protected void aOutput(Message message) {
+        int ackNumber = ackManager.get();
+        int seqNumber = aSeqManager.get();
+        int checkSum = aCheckSumManager.getCheckSum(seqNumber, ackNumber, message.getData());
 
-    	toLayer3(A, packet);
+        Packet packet = new Packet(seqNumber, ackNumber, checkSum, message.getData());
+
+        toLayer3(A, packet);
     }
-    
+
     // This routine will be called whenever a packet sent from the B-side 
     // (i.e. as a result of a toLayer3() being done by a B-side procedure)
     // arrives at the A-side.  "packet" is the (possibly corrupted) packet
     // sent from the B-side.
-    protected void aInput(Packet packet)
-    {
-    	if (packet != null){
-    		if (packet.getAcknum() == aSeqManager.get()){
-    			
-    		}
-    	}
+    protected void aInput(Packet packet) {
+        if (packet != null) {
+            if (packet.getAcknum() == aSeqManager.get()) {
+
+            }
+        }
     }
-    
+
     // This routine will be called when A's timer expires (thus generating a 
     // timer interrupt). You'll probably want to use this routine to control 
     // the retransmission of packets. See startTimer() and stopTimer(), above,
     // for how the timer is started and stopped. 
-    protected void aTimerInterrupt()
-    {
+    protected void aTimerInterrupt() {
 
     }
-    
+
     // This routine will be called once, before any of your other A-side 
     // routines are called. It can be used to do any required
     // initialization (e.g. of member variables you add to control the state
     // of entity A).
-    protected void aInit()
-    {
-    	aSeqManager = new SequenceManager(LimitSeqNo);
-    	aCheckSumManager = new CheckSumManager();
-    	ackManager = new AckManager();
+    protected void aInit() {
+        aSeqManager = new SequenceManager(LimitSeqNo);
+        aCheckSumManager = new CheckSumManager();
+        ackManager = new AckManager();
     }
-    
+
     // This routine will be called whenever a packet sent from the B-side 
     // (i.e. as a result of a toLayer3() being done by an A-side procedure)
     // arrives at the B-side.  "packet" is the (possibly corrupted) packet
     // sent from the A-side.
-    protected void bInput(Packet packet)
-    {
-    	Packet response = null;
-    	
-    	if (packet != null){
-    		int checkSum = bCheckSumManager.getCheckSum(packet.getSeqnum(), packet.getAcknum(), packet.getPayload());
-    		
-    		if (checkSum == packet.getChecksum()){ 
-    			bAckManager.setAck(packet.getSeqnum());
-    			response = new Packet(0, bAckManager.get(), 0);
-    		}
-    	}else{
-    		response = new Packet(0, bAckManager.get(), 0);
-    	}
-    	
-    	toLayer3(B, response);
+    protected void bInput(Packet packet) {
+        Packet response = null;
+
+        if (packet != null) {
+            int checkSum = bCheckSumManager.getCheckSum(packet.getSeqnum(), packet.getAcknum(), packet.getPayload());
+
+            if (checkSum == packet.getChecksum()) {
+                bAckManager.setAck(packet.getSeqnum());
+                response = new Packet(0, bAckManager.get(), 0);
+            }
+        } else {
+            response = new Packet(0, bAckManager.get(), 0);
+        }
+
+        toLayer3(B, response);
     }
-    
+
     // This routine will be called once, before any of your other B-side 
     // routines are called. It can be used to do any required
     // initialization (e.g. of member variables you add to control the state
     // of entity B).
-    protected void bInit()
-    {
-    	bSeqManager = new SequenceManager(LimitSeqNo);
-    	bCheckSumManager = new CheckSumManager();
-    	bAckManager = new AckManager();
+    protected void bInit() {
+        bSeqManager = new SequenceManager(LimitSeqNo);
+        bCheckSumManager = new CheckSumManager();
+        bAckManager = new AckManager();
     }
 
     // Use to print final statistics
-    protected void Simulation_done()
-    {
+    protected void Simulation_done() {
 
-    }	
+    }
 
 }
