@@ -12,8 +12,8 @@ public class AckManager {
 		return ack;
 	}
 
-	public void setAck(int seqnum) {
-		ack = seqnum;
+	public void setAck(int ack) {
+		this.ack = ack;
 	}
 	
 	public void increment(){

@@ -2,6 +2,7 @@ package main;
 
 import model.AckManager;
 import model.CheckSumManager;
+import model.PacketSender;
 import model.SequenceManager;
 
 public class StudentNetworkSimulator extends NetworkSimulator {
@@ -103,6 +104,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     private CheckSumManager aCheckSumManager;
     private AckManager ackManager;
     private SequenceManager aSeqManager;
+    private PacketSender aPacketSender;
 
 
     private CheckSumManager bCheckSumManager;
@@ -135,8 +137,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         int checkSum = aCheckSumManager.getCheckSum(seqNumber, ackNumber, message.getData());
 
         Packet packet = new Packet(seqNumber, ackNumber, checkSum, message.getData());
-
-        toLayer3(A, packet);
+        aPacketSender.queuePacket(packet);
     }
 
     // This routine will be called whenever a packet sent from the B-side 
@@ -145,8 +146,10 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     // sent from the B-side.
     protected void aInput(Packet packet) {
         if (packet != null) {
-            if (packet.getAcknum() == aSeqManager.get()) {
-
+            if (aPacketSender.isInWindow(packet.getAcknum())) {
+                aPacketSender.moveWindow(packet);
+            } else {
+                //TODO: Which package do we retransmit
             }
         }
     }
@@ -167,6 +170,13 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         aSeqManager = new SequenceManager(LimitSeqNo);
         aCheckSumManager = new CheckSumManager();
         ackManager = new AckManager();
+        aPacketSender = new PacketSender(new PacketSender.PacketListener() {
+            @Override
+            public void send(Packet packet) {
+                StudentNetworkSimulator.this.toLayer3(A, packet);
+            }
+        }, WindowSize);
+        aPacketSender.start();
     }
 
     // This routine will be called whenever a packet sent from the B-side 
@@ -180,6 +190,14 @@ public class StudentNetworkSimulator extends NetworkSimulator {
             int checkSum = bCheckSumManager.getCheckSum(packet.getSeqnum(), packet.getAcknum(), packet.getPayload());
 
             if (checkSum == packet.getChecksum()) {
+                // to layer 5 while we respond with an ACK
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        toLayer5(packet.getPayload());
+                    }
+                }).start();
+
                 bAckManager.setAck(packet.getSeqnum());
                 response = new Packet(0, bAckManager.get(), 0);
             }
@@ -202,7 +220,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
 
     // Use to print final statistics
     protected void Simulation_done() {
-
+        aPacketSender.finish();
     }
 
 }
