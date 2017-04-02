@@ -1,9 +1,6 @@
 package main;
 
-import model.AckManager;
-import model.CheckSumManager;
-import model.PacketSender;
-import model.SequenceManager;
+import model.*;
 
 public class StudentNetworkSimulator extends NetworkSimulator {
     /*
@@ -110,6 +107,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     private CheckSumManager bCheckSumManager;
     private AckManager bAckManager;
     private SequenceManager bSeqManager;
+    private PacketAcker packetAcker;
 
     // This is the constructor.  Don't touch!
     public StudentNetworkSimulator(int numMessages,
@@ -132,6 +130,8 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     // the data in such a message is delivered in-order, and correctly, to
     // the receiving upper layer.
     protected void aOutput(Message message) {
+        Util.messagesReceived++;
+
         int ackNumber = ackManager.get();
         int seqNumber = aSeqManager.get();
         int checkSum = aCheckSumManager.getCheckSum(seqNumber, ackNumber, message.getData());
@@ -145,11 +145,13 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     // arrives at the A-side.  "packet" is the (possibly corrupted) packet
     // sent from the B-side.
     protected void aInput(Packet packet) {
+        Util.ackReceived++;
+
         if (packet != null) {
             if (aPacketSender.isInWindow(packet.getAcknum())) {
                 aPacketSender.moveWindow(packet);
-            } else {
-                //TODO: Which package do we retransmit
+            } else if (aPacketSender.lastAcked(packet)) {
+                aPacketSender.retransmit(packet.getAcknum());
             }
         }
     }
@@ -159,7 +161,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     // the retransmission of packets. See startTimer() and stopTimer(), above,
     // for how the timer is started and stopped. 
     protected void aTimerInterrupt() {
-
+        aPacketSender.onTimerElapse();
     }
 
     // This routine will be called once, before any of your other A-side 
@@ -175,6 +177,17 @@ public class StudentNetworkSimulator extends NetworkSimulator {
             public void send(Packet packet) {
                 StudentNetworkSimulator.this.toLayer3(A, packet);
             }
+
+            @Override
+            public void stopTimer() {
+                StudentNetworkSimulator.this.stopTimer(A);
+            }
+
+            @Override
+            public void startTimer() {
+                StudentNetworkSimulator.this.startTimer(A, RxmtInterval);
+            }
+
         }, WindowSize);
         aPacketSender.start();
     }
@@ -184,28 +197,8 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     // arrives at the B-side.  "packet" is the (possibly corrupted) packet
     // sent from the A-side.
     protected void bInput(Packet packet) {
-        Packet response = null;
-
-        if (packet != null) {
-            int checkSum = bCheckSumManager.getCheckSum(packet.getSeqnum(), packet.getAcknum(), packet.getPayload());
-
-            if (checkSum == packet.getChecksum()) {
-                // to layer 5 while we respond with an ACK
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        toLayer5(packet.getPayload());
-                    }
-                }).start();
-
-                bAckManager.setAck(packet.getSeqnum());
-                response = new Packet(0, bAckManager.get(), 0);
-            }
-        } else {
-            response = new Packet(0, bAckManager.get(), 0);
-        }
-
-        toLayer3(B, response);
+        Util.packetsReceivedFromA++;
+        packetAcker.ack(packet);
     }
 
     // This routine will be called once, before any of your other B-side 
@@ -216,11 +209,31 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         bSeqManager = new SequenceManager(LimitSeqNo);
         bCheckSumManager = new CheckSumManager();
         bAckManager = new AckManager();
+        packetAcker = new PacketAcker(new PacketAcker.PacketAckerListener() {
+            @Override
+            public void sendAck(Packet packet) {
+                Util.packetsSent++;
+                toLayer3(B, packet);
+            }
+
+            @Override
+            public void sendToApplication(String payload) {
+                Util.delivered++;
+                toLayer5(payload);
+            }
+
+        }, WindowSize);
     }
 
     // Use to print final statistics
     protected void Simulation_done() {
         aPacketSender.finish();
+
+        System.out.println(String.format("A received %d messages from layer5", Util.messagesReceived));
+        System.out.println(String.format("A received %d acked packets from B", Util.ackReceived));
+        System.out.println(String.format("Sent %d packets to B", Util.packetsSent));
+        System.out.println(String.format("B Received %d from A", Util.packetsReceivedFromA));
+        System.out.println(String.format("%d messages delivered on B", Util.delivered));
     }
 
 }

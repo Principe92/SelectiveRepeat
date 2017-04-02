@@ -21,7 +21,7 @@ public class PacketSender extends Thread {
     private int index;
     private int maxIndex;
     private int baseSeq;
-    private int end;
+    private int lastAcked;
 
     public PacketSender(PacketListener listener, int windowSize) {
         this.listener = listener;
@@ -30,13 +30,10 @@ public class PacketSender extends Thread {
         this.object = new Object();
         this.buffer = new HashMap<>();
         this.maxIndex = windowSize;
-        this.end = windowSize;
     }
 
     public boolean isInWindow(int seq) {
-        synchronized (object) {
-            return buffer.containsKey(seq);
-        }
+        return Util.isInWindow(seq, baseSeq, windowSize);
     }
 
     @Override
@@ -48,6 +45,11 @@ public class PacketSender extends Thread {
                     int size = queue.size();
 
                     if (index < size) {
+
+                        if (index == 0) {
+                            listener.startTimer();
+                        }
+
                         Packet packet = queue.remove();
                         buffer.put(packet.getSeqnum(), packet);
                         listener.send(packet);
@@ -55,7 +57,6 @@ public class PacketSender extends Thread {
                         index++;
                     }
                 }
-
             }
         }
     }
@@ -71,34 +72,65 @@ public class PacketSender extends Thread {
     }
 
     private void removePacket(Packet packet) {
-        if (buffer.containsKey(packet.getSeqnum())) {
-            buffer.remove(packet.getSeqnum());
-        }
-
+        removePacket(packet.getSeqnum());
     }
 
     public void moveWindow(Packet packet) {
         synchronized (object) {
+            lastAcked = packet.getAcknum();
             removePacket(packet);
 
+            int newBase = Util.move(packet.getAcknum(), windowSize);
+            int diff = getNewDifference(newBase);
+            maxIndex += diff;
+            baseSeq = newBase;
 
-            // If base sequence of window arrived last, move the entire window by window size
-            // Else just move by 1
-            if (packet.getSeqnum() == baseSeq) {
-                maxIndex = buffer.isEmpty() ? end + windowSize : ++maxIndex;
-                baseSeq = move(baseSeq);
-                end = maxIndex;
-            } else {
-                maxIndex++;
-            }
+            listener.stopTimer();
+            listener.startTimer();
         }
     }
 
-    private int move(int seq) {
-        return seq == (2 * windowSize) ? 1 : ++seq;
+    private int getNewDifference(int newBaseSeq) {
+        int num = baseSeq;
+        int count = 0;
+
+        while (num != newBaseSeq) {
+            removePacket(num);
+            num = Util.move(num, windowSize);
+            count++;
+        }
+
+        return count;
+    }
+
+    private void removePacket(int key) {
+        if (buffer.containsKey(key)) {
+            buffer.remove(key);
+        }
+    }
+
+    public boolean lastAcked(Packet packet) {
+        return packet.getAcknum() == lastAcked;
+    }
+
+    public void retransmit(int acknum) {
+        int next = Util.move(acknum, windowSize);
+
+        if (buffer.containsKey(next)) {
+            Packet packet = buffer.get(next);
+            listener.send(packet);
+        }
+    }
+
+    public void onTimerElapse() {
+        retransmit(lastAcked);
     }
 
     public interface PacketListener {
         void send(Packet packet);
+
+        void stopTimer();
+
+        void startTimer();
     }
 }
