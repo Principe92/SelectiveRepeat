@@ -89,6 +89,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
      */
 
     public static final int FirstSeqNo = 0;
+    private final int msgSize;
     private int WindowSize;
     private double RxmtInterval;
     private int LimitSeqNo;
@@ -98,15 +99,11 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     // state information for A or B.
     // Also add any necessary methods (e.g. checksum of a String)
 
-    private CheckSumManager aCheckSumManager;
+    private CheckSumManager checkSumManager;
     private AckManager ackManager;
-    private SequenceManager aSeqManager;
-    private PacketSender aPacketSender;
+    private SequenceManager sequenceManager;
+    private PacketSender packetSender;
 
-
-    private CheckSumManager bCheckSumManager;
-    private AckManager bAckManager;
-    private SequenceManager bSeqManager;
     private PacketAcker packetAcker;
 
     // This is the constructor.  Don't touch!
@@ -122,6 +119,7 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         WindowSize = winsize;
         LimitSeqNo = 2 * winsize;
         RxmtInterval = delay;
+        this.msgSize = numMessages;
     }
 
 
@@ -132,12 +130,17 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     protected void aOutput(Message message) {
         Util.messagesReceived++;
 
+        // create packet
         int ackNumber = ackManager.get();
-        int seqNumber = aSeqManager.get();
-        int checkSum = aCheckSumManager.getCheckSum(seqNumber, ackNumber, message.getData());
+        int seqNumber = sequenceManager.get();
+        int checkSum = checkSumManager.getCheckSum(seqNumber, ackNumber, message.getData());
 
         Packet packet = new Packet(seqNumber, ackNumber, checkSum, message.getData());
-        aPacketSender.queuePacket(packet);
+        packetSender.queuePacket(packet);
+
+        // get sequence number and ack number ready for next packet
+        ackManager.increment();
+        sequenceManager.increment();
     }
 
     // This routine will be called whenever a packet sent from the B-side 
@@ -148,10 +151,15 @@ public class StudentNetworkSimulator extends NetworkSimulator {
         Util.ackReceived++;
 
         if (packet != null) {
-            if (aPacketSender.isInWindow(packet.getAcknum())) {
-                aPacketSender.moveWindow(packet);
-            } else if (aPacketSender.lastAcked(packet)) {
-                aPacketSender.retransmit(packet.getAcknum());
+            Util.calculateTime(packet.getAcknum(), System.nanoTime());
+
+            if (packetSender.isInWindow(packet.getAcknum())) {
+                packetSender.moveWindow(packet);
+            } else if (packetSender.lastAcked(packet)) {
+                System.out.println(String.format("Retransmit pkt #%d due to duplicate", Util.move(packet.getAcknum(), WindowSize)));
+                packetSender.retransmit(packet.getAcknum());
+                stopTimer(A);
+                startTimer(A, RxmtInterval);
             }
         }
     }
@@ -161,7 +169,8 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     // the retransmission of packets. See startTimer() and stopTimer(), above,
     // for how the timer is started and stopped. 
     protected void aTimerInterrupt() {
-        aPacketSender.onTimerElapse();
+        Util.timerElapsed++;
+        packetSender.onTimerElapse();
     }
 
     // This routine will be called once, before any of your other A-side 
@@ -169,12 +178,13 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     // initialization (e.g. of member variables you add to control the state
     // of entity A).
     protected void aInit() {
-        aSeqManager = new SequenceManager(LimitSeqNo);
-        aCheckSumManager = new CheckSumManager();
-        ackManager = new AckManager();
-        aPacketSender = new PacketSender(new PacketSender.PacketListener() {
+        sequenceManager = new SequenceManager(WindowSize, 1);
+        checkSumManager = new CheckSumManager();
+        ackManager = new AckManager(WindowSize);
+        packetSender = new PacketSender(new PacketSender.PacketListener() {
             @Override
             public void send(Packet packet) {
+                Util.packetsSent++;
                 StudentNetworkSimulator.this.toLayer3(A, packet);
             }
 
@@ -189,7 +199,6 @@ public class StudentNetworkSimulator extends NetworkSimulator {
             }
 
         }, WindowSize);
-        aPacketSender.start();
     }
 
     // This routine will be called whenever a packet sent from the B-side 
@@ -206,13 +215,10 @@ public class StudentNetworkSimulator extends NetworkSimulator {
     // initialization (e.g. of member variables you add to control the state
     // of entity B).
     protected void bInit() {
-        bSeqManager = new SequenceManager(LimitSeqNo);
-        bCheckSumManager = new CheckSumManager();
-        bAckManager = new AckManager();
         packetAcker = new PacketAcker(new PacketAcker.PacketAckerListener() {
             @Override
             public void sendAck(Packet packet) {
-                Util.packetsSent++;
+                Util.ackSent++;
                 toLayer3(B, packet);
             }
 
@@ -227,13 +233,16 @@ public class StudentNetworkSimulator extends NetworkSimulator {
 
     // Use to print final statistics
     protected void Simulation_done() {
-        aPacketSender.finish();
 
-        System.out.println(String.format("A received %d messages from layer5", Util.messagesReceived));
-        System.out.println(String.format("A received %d acked packets from B", Util.ackReceived));
-        System.out.println(String.format("Sent %d packets to B", Util.packetsSent));
-        System.out.println(String.format("B Received %d from A", Util.packetsReceivedFromA));
-        System.out.println(String.format("%d messages delivered on B", Util.delivered));
+        System.out.println(String.format("RTT is %d", Util.getRTT(msgSize)));
+
+        System.out.println(String.format("Messages received layer5 %d", Util.messagesReceived));
+        System.out.println(String.format("Ack received from B: %d", Util.ackReceived));
+        System.out.println(String.format("Packet Sent to B: %d", Util.packetsSent));
+        System.out.println(String.format("Packet received from A: %d", Util.packetsReceivedFromA));
+        System.out.println(String.format("Messages delivered to layer5 at B: %d", Util.delivered));
+        System.out.println(String.format("%d interrupt called", Util.timerElapsed));
+        System.out.println(String.format("%d retransmitted", Util.retransmit));
     }
 
 }

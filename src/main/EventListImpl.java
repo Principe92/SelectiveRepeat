@@ -57,7 +57,6 @@ public class EventListImpl implements EventList {
         }
 
         return timer;
-
     }
 
     public double getLastPacketTime(int entityTo) {

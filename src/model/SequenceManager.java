@@ -3,11 +3,11 @@ package model;
 public class SequenceManager {
 
     private int seq;
-    private int limit;
+    private int windowSize;
 
-    public SequenceManager(int limit) {
-        this.seq = 1;
-        this.limit = limit;
+    public SequenceManager(int windowSize, int start) {
+        this.seq = start;
+        this.windowSize = windowSize;
     }
 
     public int get() {
@@ -15,10 +15,10 @@ public class SequenceManager {
     }
 
     public void increment() {
-        seq = seq == limit ? 1 : ++seq;
+        seq = Util.move(seq, windowSize);
     }
 
     public boolean isCorrect(int seqnum) {
-        return seq == seqnum;
+        return Util.move(seq, windowSize) == seqnum;
     }
 }

@@ -93,9 +93,9 @@ public abstract class NetworkSimulator {
 
             if (traceLevel >= 2) {
                 System.out.println();
-                System.out.print("EVENT time: " + next.getTime());
-                System.out.print("  type: " + next.getType());
-                System.out.println("  entity: " + next.getEntity());
+//                System.out.print("EVENT time: " + next.getTime());
+//                System.out.print("  type: " + next.getType());
+//                System.out.println("  entity: " + next.getEntity());
             }
 
             // Advance the simulator's time
